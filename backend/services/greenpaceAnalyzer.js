@@ -95,15 +95,15 @@ export async function analyzeGreenspace(cityData, boundaries, progressEmitter = 
       historicalData: historicalData,
       gridData: currentCoverage.gridResults || [], // Include grid results for map visualization
       analysis: {
-        method: 'Multi-index vegetation analysis (NDVI+EVI+GNDVI)',
-                  dataSource: 'SENTINEL-2 L2A monthly composites (enhanced cloud-free data)',
-          resolution: 'Improved 10m approximation (32x32 pixel grids)',
+                method: 'Real satellite multi-index vegetation analysis (NDVI+EVI+GNDVI)',
+        dataSource: 'SENTINEL-2 L2A monthly composites (real satellite data only)',
+        resolution: 'Authentic 10m satellite resolution (32x32 pixel grids)',
         confidence: currentCoverage.confidence,
         analysisDate: new Date().toISOString(),
         totalPixels: currentCoverage.totalPixels,
         greenPixels: currentCoverage.greenPixels,
         apiSource: 'SENTINEL Hub API',
-                  disclaimer: 'Analysis based on research-validated vegetation indices using ESA SENTINEL-2 data'
+                  disclaimer: 'Analysis uses only real ESA SENTINEL-2 satellite data - no synthetic or simulated data'
       },
       cityInfo: {
         name: cityData.city || extractCityFromAddress(cityData.formatted_address),
@@ -326,297 +326,37 @@ async function analyzeGridCell(cellBounds, year) {
 }
 
 async function getRealNDVIData(cellBounds, year) {
-  // GEOGRAPHIC-BASED VEGETATION ANALYSIS  
-  // Uses location characteristics with research-based seasonal factors
-  // Enhanced with multi-index approach when SENTINEL API is available
+  // REAL SATELLITE DATA ONLY - NO SYNTHETIC FALLBACKS
+  // Uses only actual SENTINEL-2 satellite imagery for vegetation analysis
   
   const [west, south, east, north] = cellBounds
   const centerLat = (south + north) / 2
   const centerLon = (west + east) / 2
   
+  // Validate SENTINEL credentials are available
+  if (!SENTINEL_CONFIG.client_id || !SENTINEL_CONFIG.client_secret) {
+    throw new Error('SENTINEL Hub credentials not configured. Real satellite data analysis requires valid API credentials.')
+  }
+  
   try {
-    // Check if SENTINEL credentials are available - try real API first
-    if (SENTINEL_CONFIG.client_id && SENTINEL_CONFIG.client_secret) {
-      try {
-        const ndviValues = await callSentinelAPI(cellBounds, year)
-        if (ndviValues && ndviValues.length > 0) {
-          return ndviValues
-        }
-      } catch (sentinelError) {
-        console.warn('SENTINEL API failed, using geographic analysis:', sentinelError.message)
-      }
+    console.log('Requesting real SENTINEL-2 satellite data for coordinates:', centerLat.toFixed(3), centerLon.toFixed(3))
+    
+    const ndviValues = await callSentinelAPI(cellBounds, year)
+    
+    if (!ndviValues || ndviValues.length === 0) {
+      throw new Error('No SENTINEL-2 satellite data available for this location and time period. Analysis requires real satellite imagery.')
     }
     
-    // Enhanced geographic-based vegetation analysis with research methodology
-    console.log('Using enhanced geographic analysis with seasonal factors for coordinates:', centerLat, centerLon)
-    
-    // Generate realistic NDVI values based on geographic characteristics
-    const ndviGrid = generateGeographicNDVI(centerLat, centerLon, cellBounds)
-    
-    return ndviGrid
+    console.log('Successfully retrieved real SENTINEL-2 data:', ndviValues.length, 'pixels')
+    return ndviValues
     
   } catch (error) {
-    console.error('Failed to get vegetation data:', error.message)
-    throw new Error(`Unable to analyze vegetation: ${error.message}`)
+    console.error('Real satellite data retrieval failed:', error.message)
+    throw new Error(`Real satellite data unavailable: ${error.message}`)
   }
 }
 
-function generateGeographicNDVI(lat, lon, cellBounds) {
-  // Generate realistic NDVI values based on geographic location
-  // Tropical/subtropical regions = higher vegetation, polar = lower vegetation
-  
-  const gridSize = 32 * 32 // IMPROVED RESOLUTION: 1024 pixels per cell for better 10m approximation
-  const ndviValues = []
-  
-  // Base vegetation probability based on latitude (tropical regions have more vegetation)
-  let baseVegetation = 0.4 // Default moderate vegetation
-  
-  // Tropical zone (±23.5°) - high vegetation
-  if (Math.abs(lat) < 23.5) {
-    baseVegetation = 0.75 // High tropical vegetation
-  }
-  // Subtropical (23.5° - 35°) - good vegetation  
-  else if (Math.abs(lat) < 35) {
-    baseVegetation = 0.6 // Good subtropical vegetation
-  }
-  // Temperate (35° - 50°) - moderate vegetation
-  else if (Math.abs(lat) < 50) {
-    baseVegetation = 0.45 // Moderate temperate vegetation
-  }
-  // Higher latitudes - lower vegetation
-  else {
-    baseVegetation = 0.25 // Lower vegetation at high latitudes
-  }
-  
-  // MAJOR GEOGRAPHIC REGIONS - Override climate zones for specific geographic features
-  
-  // DESERT REGIONS - Very low vegetation regardless of latitude
-  // Middle East and North Africa
-  if (lat > 15 && lat < 35 && lon > 25 && lon < 55) {
-    baseVegetation = 0.10 // Desert region: Arabian Peninsula, Egypt, etc.
-  }
-  // North Africa (Sahara)
-  else if (lat > 15 && lat < 35 && lon > -10 && lon < 25) {
-    baseVegetation = 0.08 // Sahara Desert region
-  }
-  // Australian Outback
-  else if (lat > -35 && lat < -20 && lon > 110 && lon < 155) {
-    baseVegetation = 0.12 // Australian desert interior
-  }
-  
-  // TEMPERATE RAINFOREST REGIONS - Very high vegetation
-  // Pacific Northwest (Vancouver, Seattle, Portland)
-  else if (lat > 45 && lat < 50 && lon > -125 && lon < -120) {
-    baseVegetation = 0.70 // Temperate rainforest region
-  }
-  // British Columbia Coast
-  else if (lat > 48 && lat < 55 && lon > -135 && lon < -120) {
-    baseVegetation = 0.75 // Coastal temperate rainforest
-  }
-  
-  // TROPICAL RAINFOREST REGIONS - Highest vegetation
-  // French Polynesia (Punaauia) - very high tropical vegetation
-  else if (lat > -25 && lat < -10 && lon > -160 && lon < -140) {
-    baseVegetation = 0.85 // Very high for tropical Pacific islands
-  }
-  // Amazon Basin
-  else if (lat > -15 && lat < 5 && lon > -75 && lon < -45) {
-    baseVegetation = 0.90 // Amazon rainforest
-  }
-  // Southeast Asian Rainforest
-  else if (lat > -10 && lat < 20 && lon > 90 && lon < 140) {
-    baseVegetation = 0.80 // Southeast Asian tropical forests
-  }
-  
-  // SPECIFIC CITY ADJUSTMENTS - Urban density within geographic regions
-  
-  // Toronto, Canada (Greater Toronto Area)
-  if (lat > 43.5 && lat < 43.9 && lon > -79.9 && lon < -78.7) {
-    baseVegetation = Math.min(baseVegetation, 0.35) // Major urban center but with parks
-  }
-  // Vancouver, Canada - Keep high base vegetation (temperate rainforest city)
-  else if (lat > 49.2 && lat < 49.4 && lon > -123.3 && lon < -122.9) {
-    baseVegetation = Math.max(baseVegetation, 0.65) // Urban center in temperate rainforest
-  }
-  // Istanbul, Turkey  
-  else if (lat > 41.0 && lat < 41.4 && lon > 28.8 && lon < 29.4) {
-    baseVegetation = Math.min(baseVegetation, 0.25) // Dense metropolitan area
-  }
-  // Tokyo/Shibuya, Japan
-  else if (lat > 35.6 && lat < 35.8 && lon > 139.6 && lon < 139.8) {
-    baseVegetation = Math.min(baseVegetation, 0.20) // Dense urban area
-  }
-  // Manchester, UK
-  else if (lat > 53.3 && lat < 53.6 && lon > -2.4 && lon < -2.0) {
-    baseVegetation = Math.min(baseVegetation, 0.30) // Industrial urban center
-  }
-  // Riyadh, Saudi Arabia - Already handled by desert region
-  else if (lat > 24.4 && lat < 25.1 && lon > 46.5 && lon < 47.5) {
-    baseVegetation = Math.min(baseVegetation, 0.08) // Desert metropolitan area
-  }
-  // Madinah, Saudi Arabia - Desert region
-  else if (lat > 24.0 && lat < 25.0 && lon > 39.0 && lon < 40.0) {
-    baseVegetation = Math.min(baseVegetation, 0.08) // Desert city
-  }
-  // General urban area detection (fallback)
-  // If coordinates match typical metropolitan patterns, reduce vegetation
-  else {
-    // Large coordinate span often indicates metropolitan area boundaries
-    const cellSpan = Math.abs(cellBounds[2] - cellBounds[0]) + Math.abs(cellBounds[3] - cellBounds[1])
-    if (cellSpan > 1.0) { // Very large area suggests metro region
-      baseVegetation = Math.min(baseVegetation, 0.35) // Reduce for large metropolitan areas
-    }
-  }
-  
-  // Generate NDVI grid with realistic variation
-  for (let i = 0; i < gridSize; i++) {
-    // Add natural variation (some areas more/less vegetated)
-    const variation = (Math.random() - 0.5) * 0.4 // ±0.2 variation
-    const seasonalFactor = getSeasonalFactor(lat, lon) // Research-based seasonal adjustment
-    
-    // Calculate NDVI: higher values = more vegetation
-    let ndvi = (baseVegetation + variation) * seasonalFactor
-    
-    // Convert to standard NDVI range (-1 to 1, but vegetation is typically 0.2-0.8)
-    ndvi = Math.max(0.1, Math.min(0.8, ndvi))
-    
-    // Urban areas have more built environment (lower NDVI)
-    let urbanChance = 0.15 // Default 15% chance of non-vegetation
-    
-    // Increase urban/built percentage for metropolitan areas
-    if (baseVegetation <= 0.25) { // Major urban centers
-      urbanChance = 0.40 // 40% chance of buildings/roads/concrete
-    } else if (baseVegetation <= 0.35) { // Metropolitan areas
-      urbanChance = 0.25 // 25% chance of built environment
-    }
-    
-    if (Math.random() < urbanChance) {
-      ndvi = Math.random() * 0.3 // Water/urban/rock/buildings
-    }
-    
-    ndviValues.push(ndvi)
-  }
-  
-  const avgNDVI = (ndviValues.reduce((a,b) => a+b, 0)/ndviValues.length).toFixed(3)
-  let locationNote = ""
-  
-  // Add location-specific notes
-  if (lat > 15 && lat < 35 && lon > 25 && lon < 55) {
-    locationNote = " (Middle East/Arabian Peninsula - Desert)"
-  } else if (lat > 15 && lat < 35 && lon > -10 && lon < 25) {
-    locationNote = " (North Africa/Sahara - Desert)"
-  } else if (lat > 45 && lat < 50 && lon > -125 && lon < -120) {
-    locationNote = " (Pacific Northwest - Temperate Rainforest)"
-  } else if (lat > 48 && lat < 55 && lon > -135 && lon < -120) {
-    locationNote = " (British Columbia Coast - Temperate Rainforest)"
-  } else if (lat > 43.5 && lat < 43.9 && lon > -79.9 && lon < -78.7) {
-    locationNote = " (Toronto metro area)"
-  } else if (lat > 49.2 && lat < 49.4 && lon > -123.3 && lon < -122.9) {
-    locationNote = " (Vancouver - Temperate Rainforest City)"
-  } else if (lat > 41.0 && lat < 41.4 && lon > 28.8 && lon < 29.4) {
-    locationNote = " (Istanbul area)"
-  } else if (lat > 35.6 && lat < 35.8 && lon > 139.6 && lon < 139.8) {
-    locationNote = " (Tokyo area)"
-  } else if (lat > -25 && lat < -10 && lon > -160 && lon < -140) {
-    locationNote = " (French Polynesia - Tropical)"
-  } else if (lat > 24.0 && lat < 25.0 && lon > 39.0 && lon < 40.0) {
-    locationNote = " (Madinah - Desert City)"
-  } else if (lat > 24.4 && lat < 25.1 && lon > 46.5 && lon < 47.5) {
-    locationNote = " (Riyadh - Desert City)"
-  }
-  
-  console.log(`Generated geographic NDVI: lat=${lat.toFixed(3)}, base=${baseVegetation.toFixed(2)}, avg=${avgNDVI}${locationNote}`)
-  
-  return ndviValues
-}
-
-function getSeasonalFactor(lat, lon) {
-  // Research-based seasonal vegetation adjustments
-  // Based on hemisphere, month, and geographic region
-  
-  const currentMonth = new Date().getMonth() + 1 // 1-12
-  const isNorthernHemisphere = lat >= 0
-  
-  // Define seasons based on hemisphere
-  let season
-  if (isNorthernHemisphere) {
-    // Northern Hemisphere seasons
-    if (currentMonth >= 3 && currentMonth <= 5) season = 'spring'
-    else if (currentMonth >= 6 && currentMonth <= 8) season = 'summer' 
-    else if (currentMonth >= 9 && currentMonth <= 11) season = 'autumn'
-    else season = 'winter'
-  } else {
-    // Southern Hemisphere seasons (opposite)
-    if (currentMonth >= 3 && currentMonth <= 5) season = 'autumn'
-    else if (currentMonth >= 6 && currentMonth <= 8) season = 'winter'
-    else if (currentMonth >= 9 && currentMonth <= 11) season = 'spring'
-    else season = 'summer'
-  }
-  
-  // Research-based seasonal factors from vegetation studies
-  let seasonalFactor = 1.0 // Default neutral
-  
-  // Tropical regions (±23.5°) - minimal seasonal variation
-  if (Math.abs(lat) < 23.5) {
-    switch(season) {
-      case 'summer': seasonalFactor = 1.05; break // Wet season peak
-      case 'spring': seasonalFactor = 1.0; break
-      case 'autumn': seasonalFactor = 1.0; break  
-      case 'winter': seasonalFactor = 0.95; break // Dry season
-    }
-  }
-  // Subtropical regions (23.5° - 35°) - moderate seasonal variation
-  else if (Math.abs(lat) < 35) {
-    switch(season) {
-      case 'summer': seasonalFactor = 1.15; break // Peak growing season
-      case 'spring': seasonalFactor = 1.05; break // Growth beginning
-      case 'autumn': seasonalFactor = 0.90; break // Senescence
-      case 'winter': seasonalFactor = 0.75; break // Dormancy
-    }
-  }
-  // Temperate regions (35° - 50°) - strong seasonal variation
-  else if (Math.abs(lat) < 50) {
-    switch(season) {
-      case 'summer': seasonalFactor = 1.25; break // Peak vegetation
-      case 'spring': seasonalFactor = 1.10; break // Rapid growth
-      case 'autumn': seasonalFactor = 0.85; break // Leaf senescence
-      case 'winter': seasonalFactor = 0.60; break // Deciduous dormancy
-    }
-  }
-  // Higher latitude regions (50°+) - extreme seasonal variation
-  else {
-    switch(season) {
-      case 'summer': seasonalFactor = 1.35; break // Brief but intense growing season
-      case 'spring': seasonalFactor = 1.15; break // Rapid green-up
-      case 'autumn': seasonalFactor = 0.75; break // Quick senescence  
-      case 'winter': seasonalFactor = 0.45; break // Snow cover/dormancy
-    }
-  }
-  
-  // Special adjustments for specific geographic regions
-  
-  // Desert regions - minimal seasonal variation
-  if ((lat > 15 && lat < 35 && lon > 25 && lon < 55) || // Arabian Peninsula
-      (lat > 15 && lat < 35 && lon > -10 && lon < 25) || // Sahara
-      (lat > -35 && lat < -20 && lon > 110 && lon < 155)) { // Australian Outback
-    seasonalFactor = 0.85 + (seasonalFactor - 1.0) * 0.3 // Dampen seasonal variation
-  }
-  
-  // Temperate rainforest - moderated seasonal variation due to maritime climate
-  if ((lat > 45 && lat < 50 && lon > -125 && lon < -120) || // Pacific Northwest
-      (lat > 48 && lat < 55 && lon > -135 && lon < -120)) { // British Columbia
-    seasonalFactor = 0.90 + (seasonalFactor - 1.0) * 0.6 // Moderate the extremes
-  }
-  
-  // Mediterranean climates - winter growth, summer drought
-  if ((lat > 30 && lat < 45 && lon > -10 && lon < 40) || // Mediterranean Basin
-      (lat > 32 && lat < 42 && lon > -125 && lon < -115)) { // California
-    if (season === 'winter') seasonalFactor = Math.max(seasonalFactor, 0.95) // Winter rains
-    if (season === 'summer') seasonalFactor = Math.min(seasonalFactor, 0.85) // Summer drought
-  }
-  
-  return seasonalFactor
-}
+// Synthetic data generation functions removed - Real satellite data only
 
 function getVegetationThreshold(cellBounds) {
   // Research-based NDVI thresholds from vegetation studies

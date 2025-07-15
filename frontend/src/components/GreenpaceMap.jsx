@@ -54,9 +54,9 @@ const GreenpaceMap = ({ analysisData, city }) => {
         console.log('FRONTEND DEBUG: analysisData.gridData:', analysisData.gridData)
         console.log('FRONTEND DEBUG: gridData length:', analysisData.gridData?.length)
         
-        // Use real grid data if available, otherwise generate mock data
+        // Use only real satellite data - no synthetic fallbacks
         if (analysisData.gridData && analysisData.gridData.length > 0) {
-          console.log('Using real grid data:', analysisData.gridData.length, 'cells')
+          console.log('Using real SENTINEL-2 satellite data:', analysisData.gridData.length, 'cells')
           
           // DEBUG: Log sample of grid data
           console.log('Sample grid cells:', analysisData.gridData.slice(0, 3))
@@ -80,10 +80,9 @@ const GreenpaceMap = ({ analysisData, city }) => {
           
           setGreenspaceCells(cells)
         } else {
-          // Fallback to mock data if no grid data available
-          console.log('No grid data available, using fallback generation')
-          const cells = generateGreenpaceCells(bounds, analysisData.greenspacePercentage || 0)
-          setGreenspaceCells(cells)
+          // No real satellite data available - show error instead of synthetic data
+          console.error('No real satellite data available for visualization')
+          setGreenspaceCells([])
         }
       } catch (error) {
         console.error('Error generating greenspace cells:', error)
@@ -92,57 +91,40 @@ const GreenpaceMap = ({ analysisData, city }) => {
     }
   }, [analysisData])
 
-  const generateGreenpaceCells = (bounds, overallPercentage) => {
-    const [west, south, east, north] = bounds
-    const gridSize = 0.0001 // Same as analysis grid - 10m resolution
-    const cells = []
-
-    // Safety check for analysisData.cityInfo
-    if (!analysisData?.cityInfo?.latitude || !analysisData?.cityInfo?.longitude) {
-      return cells
-    }
-
-    for (let lon = west; lon < east; lon += gridSize) {
-      for (let lat = south; lat < north; lat += gridSize) {
-        const cellBounds = [
-          [lat, lon],
-          [lat, lon + gridSize],
-          [lat + gridSize, lon + gridSize],
-          [lat + gridSize, lon]
-        ]
-
-        // Real vegetation detection from SENTINEL satellite imagery analysis
-        // Very conservative detection to match realistic patterns
-        const cellLat = (cellBounds[0][0] + cellBounds[2][0]) / 2
-        const cellLng = (cellBounds[0][1] + cellBounds[2][1]) / 2
-        
-        // Only generate cells for actual grid data visualization
-        // Remove the problematic water detection that was filtering out the left half
-        const shouldShowCell = true // Always show cells for proper visualization
-        
-        if (shouldShowCell) {
-          const vegetationChance = Math.min(0.2, overallPercentage / 100) // More balanced
-          const isVegetation = Math.random() < vegetationChance
-          
-          if (isVegetation) {
-            const vegetationIntensity = Math.random() * 0.7 + 0.3 // 0.3 to 1.0 (show moderate to strong vegetation)
-            cells.push({
-              bounds: cellBounds,
-              intensity: vegetationIntensity,
-              ndvi: (vegetationIntensity * 0.4 + 0.25).toFixed(3) // Lower NDVI threshold to match backend
-            })
-          }
-        }
-      }
-    }
-
-    return cells
-  }
+  // Mock data generation function removed - Real satellite data only
 
   if (!mapBounds || !analysisData?.cityInfo?.latitude || !analysisData?.cityInfo?.longitude) {
     return (
       <div className="bg-gray-100 rounded-lg p-8 text-center">
         <p className="text-gray-600">Loading map...</p>
+      </div>
+    )
+  }
+
+  // Show error message if no real satellite data is available
+  if (greenspaceCells.length === 0 && analysisData?.gridData !== undefined) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="p-4 bg-gradient-to-r from-red-50 to-orange-50 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Map Visualization Unavailable</h3>
+          <div className="text-sm text-gray-600 space-y-2">
+            <p>No real SENTINEL-2 satellite data available for this location and time period.</p>
+            <p className="text-xs">This application only uses authentic satellite imagery. Please try:</p>
+            <ul className="text-xs list-disc list-inside ml-4 space-y-1">
+              <li>A different city or location</li>
+              <li>Checking back later for updated satellite data</li>
+              <li>Ensuring the location has recent satellite coverage</li>
+            </ul>
+          </div>
+        </div>
+        <div className="h-64 bg-gray-50 flex items-center justify-center">
+          <div className="text-center text-gray-500">
+            <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.137 0-4.146-.832-5.657-2.343" />
+            </svg>
+            <p className="text-sm">Real satellite data required for analysis</p>
+          </div>
+        </div>
       </div>
     )
   }
