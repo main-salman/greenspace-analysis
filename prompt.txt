@@ -1,0 +1,64 @@
+I want to build an app that can measure green space in any city around the world. Ideally the app should also be able to show changes in green space over the years going back 10 or 20 years. The app can be built on any platform/language. The app should score the inputted city on a scale of 1-100. The app should show percentage of greenspace change over each year. Any greenspace in the city counts - yards, backyards, parks, forests, swamps, etc. Pretty much anything that appears green on the map. We can use external API like API from Google or SENTINEL HUB or other places where we might be able to get this data from. Suggestions for new sources of green space information are welcome. Ask me 10 questions about this app before building anything. 
+
+I can see you already have SENTINEL HUB API credentials set up, which is great for satellite imagery analysis! This is an exciting project that could provide valuable insights into urban environmental changes.
+
+Before I start building, I'd like to ask you 10 questions to ensure I create exactly what you need:
+
+## Technical & Platform Questions
+
+1. **Platform Preference**: Would you prefer a web application, mobile app, or desktop application? Or should it be responsive and work across all platforms?
+
+2. **User Interface**: Do you envision this as a simple search-based tool where users input a city name, or would you like an interactive map where users can click/select areas? Should it have data visualization charts for the historical trends?
+
+3. **Geographic Boundaries**: How should the app define "city" boundaries? Should it use:
+   - Official municipal boundaries
+   - Metropolitan statistical areas
+   - User-defined radius from city center
+   - Administrative boundaries from OpenStreetMap
+
+## Data & Accuracy Questions
+
+4. **Data Sources**: Besides SENTINEL HUB (which you have set up), would you like me to integrate multiple data sources for better accuracy? Options include:
+   - Google Earth Engine
+   - NASA Landsat
+   - MODIS vegetation indices
+   - Local government open data APIs
+
+5. **Analysis Resolution**: What level of detail do you want?
+   - Pixel-level analysis (very detailed but slower)
+   - Grid-based analysis (faster, good enough for city-level)
+   - Predefined zones/districts
+
+6. **Green Space Classification**: Should the app distinguish between different types of green space (parks vs forests vs agricultural land) or treat them all equally? This affects both scoring and user understanding.
+
+## Scoring & Analytics Questions
+
+7. **Scoring Algorithm**: For the 1-100 scale, what should influence the score?
+   - Total percentage of green space only
+   - Green space per capita
+   - Distribution/accessibility of green space
+   - Quality/density of vegetation
+   - Comparison to similar-sized cities
+
+8. **Historical Data**: What's most important for the historical analysis?
+   - Absolute change (hectares gained/lost)
+   - Percentage change relative to total city area
+   - Trend analysis (steady growth/decline vs sudden changes)
+   - Seasonal adjustment (to account for natural vegetation cycles)
+
+## Performance & Scale Questions
+
+9. **Response Time**: Should the analysis be:
+   - Real-time (user waits 10-30 seconds for fresh analysis)
+   - Pre-computed for major cities (instant results)
+   - Hybrid approach (cached for popular cities, computed for others)
+
+10. **Target Scale**: Are you planning for:
+    - Personal/research use (hundreds of queries)
+    - Public tool (thousands of users)
+    - Commercial application (needs robust infrastructure)
+
+
+1. web app 3. simple search where use inputs city name 3. openstreetmap boundaries 4. any option that can be used worldwide - Google sounds good 5. grid base 6. no, treat all greenspace as one category 7. total percentage of greenspace only 8. trend analysis 9. pre-computed list of cities defined in @cities.json 10. personal/research for now.
+
+Let me know if you need Google Places API key, then I will place it in .env file
