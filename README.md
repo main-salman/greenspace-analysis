@@ -56,12 +56,12 @@ A real-time web application that measures and analyzes urban greenspace coverage
 4. **Environment variables**
    Your `.env` file is already configured with:
    ```
-   VITE_SENTINEL_API_KEY=PLAKba450c24a3bd42aa958dbde1337eca43
+   VITE_SENTINEL_API_KEY=KEY
    VITE_SENTINEL_NAME=SENTINEL2
-   VITE_SENTINEL_ID=c9720a1a-99cd-4006-9bbb-a9c61314a96f   
-   VITE_SENTINEL_CLIENT_ID=3683ccb0-f77b-445c-bb73-3edba4a1da81
-   VITE_SENTINEL_CLIENT_SECRET=ihYAQbjhecJrTgybbQrd8Lzy84PR8DRY
-   GOOGLE_EARTH_ENGINE_API_KEY=AIzaSyCXZ8hmzG8D4kMwuaMIPTOs4ganmZqKLVY
+   VITE_SENTINEL_ID=KEY   
+   VITE_SENTINEL_CLIENT_ID=KEY
+   VITE_SENTINEL_CLIENT_SECRET=KEY
+   GOOGLE_EARTH_ENGINE_API_KEY=KEY
    ```
 
 ## Running the Application

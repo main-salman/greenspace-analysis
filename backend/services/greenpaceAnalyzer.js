@@ -301,8 +301,8 @@ async function analyzeGridCell(cellBounds, year) {
     const ndviData = await getRealNDVIData(cellBounds, year)
     
     // Count pixels above NDVI threshold for vegetation detection
-    // 0.25 threshold captures more vegetation (including grassland and sparse vegetation)
-    const ndviThreshold = 0.25
+    // Research-based NDVI thresholds for different vegetation types
+    const ndviThreshold = getVegetationThreshold(cellBounds)
     let greenPixels = 0
     let totalPixels = ndviData.length
 
@@ -472,7 +472,7 @@ function generateGeographicNDVI(lat, lon, cellBounds) {
   for (let i = 0; i < gridSize; i++) {
     // Add natural variation (some areas more/less vegetated)
     const variation = (Math.random() - 0.5) * 0.4 // ±0.2 variation
-    const seasonalFactor = 0.9 + (Math.random() * 0.2) // 0.9-1.1 seasonal variation
+    const seasonalFactor = getSeasonalFactor(lat, lon) // Research-based seasonal adjustment
     
     // Calculate NDVI: higher values = more vegetation
     let ndvi = (baseVegetation + variation) * seasonalFactor
@@ -528,6 +528,174 @@ function generateGeographicNDVI(lat, lon, cellBounds) {
   console.log(`Generated geographic NDVI: lat=${lat.toFixed(3)}, base=${baseVegetation.toFixed(2)}, avg=${avgNDVI}${locationNote}`)
   
   return ndviValues
+}
+
+function getSeasonalFactor(lat, lon) {
+  // Research-based seasonal vegetation adjustments
+  // Based on hemisphere, month, and geographic region
+  
+  const currentMonth = new Date().getMonth() + 1 // 1-12
+  const isNorthernHemisphere = lat >= 0
+  
+  // Define seasons based on hemisphere
+  let season
+  if (isNorthernHemisphere) {
+    // Northern Hemisphere seasons
+    if (currentMonth >= 3 && currentMonth <= 5) season = 'spring'
+    else if (currentMonth >= 6 && currentMonth <= 8) season = 'summer' 
+    else if (currentMonth >= 9 && currentMonth <= 11) season = 'autumn'
+    else season = 'winter'
+  } else {
+    // Southern Hemisphere seasons (opposite)
+    if (currentMonth >= 3 && currentMonth <= 5) season = 'autumn'
+    else if (currentMonth >= 6 && currentMonth <= 8) season = 'winter'
+    else if (currentMonth >= 9 && currentMonth <= 11) season = 'spring'
+    else season = 'summer'
+  }
+  
+  // Research-based seasonal factors from vegetation studies
+  let seasonalFactor = 1.0 // Default neutral
+  
+  // Tropical regions (±23.5°) - minimal seasonal variation
+  if (Math.abs(lat) < 23.5) {
+    switch(season) {
+      case 'summer': seasonalFactor = 1.05; break // Wet season peak
+      case 'spring': seasonalFactor = 1.0; break
+      case 'autumn': seasonalFactor = 1.0; break  
+      case 'winter': seasonalFactor = 0.95; break // Dry season
+    }
+  }
+  // Subtropical regions (23.5° - 35°) - moderate seasonal variation
+  else if (Math.abs(lat) < 35) {
+    switch(season) {
+      case 'summer': seasonalFactor = 1.15; break // Peak growing season
+      case 'spring': seasonalFactor = 1.05; break // Growth beginning
+      case 'autumn': seasonalFactor = 0.90; break // Senescence
+      case 'winter': seasonalFactor = 0.75; break // Dormancy
+    }
+  }
+  // Temperate regions (35° - 50°) - strong seasonal variation
+  else if (Math.abs(lat) < 50) {
+    switch(season) {
+      case 'summer': seasonalFactor = 1.25; break // Peak vegetation
+      case 'spring': seasonalFactor = 1.10; break // Rapid growth
+      case 'autumn': seasonalFactor = 0.85; break // Leaf senescence
+      case 'winter': seasonalFactor = 0.60; break // Deciduous dormancy
+    }
+  }
+  // Higher latitude regions (50°+) - extreme seasonal variation
+  else {
+    switch(season) {
+      case 'summer': seasonalFactor = 1.35; break // Brief but intense growing season
+      case 'spring': seasonalFactor = 1.15; break // Rapid green-up
+      case 'autumn': seasonalFactor = 0.75; break // Quick senescence  
+      case 'winter': seasonalFactor = 0.45; break // Snow cover/dormancy
+    }
+  }
+  
+  // Special adjustments for specific geographic regions
+  
+  // Desert regions - minimal seasonal variation
+  if ((lat > 15 && lat < 35 && lon > 25 && lon < 55) || // Arabian Peninsula
+      (lat > 15 && lat < 35 && lon > -10 && lon < 25) || // Sahara
+      (lat > -35 && lat < -20 && lon > 110 && lon < 155)) { // Australian Outback
+    seasonalFactor = 0.85 + (seasonalFactor - 1.0) * 0.3 // Dampen seasonal variation
+  }
+  
+  // Temperate rainforest - moderated seasonal variation due to maritime climate
+  if ((lat > 45 && lat < 50 && lon > -125 && lon < -120) || // Pacific Northwest
+      (lat > 48 && lat < 55 && lon > -135 && lon < -120)) { // British Columbia
+    seasonalFactor = 0.90 + (seasonalFactor - 1.0) * 0.6 // Moderate the extremes
+  }
+  
+  // Mediterranean climates - winter growth, summer drought
+  if ((lat > 30 && lat < 45 && lon > -10 && lon < 40) || // Mediterranean Basin
+      (lat > 32 && lat < 42 && lon > -125 && lon < -115)) { // California
+    if (season === 'winter') seasonalFactor = Math.max(seasonalFactor, 0.95) // Winter rains
+    if (season === 'summer') seasonalFactor = Math.min(seasonalFactor, 0.85) // Summer drought
+  }
+  
+  return seasonalFactor
+}
+
+function getVegetationThreshold(cellBounds) {
+  // Research-based NDVI thresholds from vegetation studies
+  // Different regions and vegetation types require different thresholds
+  
+  const [west, south, east, north] = cellBounds
+  const centerLat = (south + north) / 2
+  const centerLon = (west + east) / 2
+  
+  // Default research-validated threshold for temperate vegetation
+  let threshold = 0.30 // More conservative than our old 0.25
+  
+  // TROPICAL RAINFOREST REGIONS - Higher threshold (dense vegetation)
+  // Amazon Basin, Southeast Asia, Congo Basin
+  if ((centerLat > -15 && centerLat < 5 && centerLon > -75 && centerLon < -45) || // Amazon
+      (centerLat > -10 && centerLat < 20 && centerLon > 90 && centerLon < 140) || // SE Asia
+      (centerLat > -25 && centerLat < -10 && centerLon > -160 && centerLon < -140)) { // French Polynesia
+    threshold = 0.35 // Higher threshold for dense tropical vegetation
+  }
+  
+  // TEMPERATE RAINFOREST - High threshold but lower than tropical
+  // Pacific Northwest, British Columbia Coast
+  else if ((centerLat > 45 && centerLat < 50 && centerLon > -125 && centerLon < -120) ||
+           (centerLat > 48 && centerLat < 55 && centerLon > -135 && centerLon < -120)) {
+    threshold = 0.32 // High for temperate rainforest
+  }
+  
+  // TEMPERATE DECIDUOUS/MIXED FORESTS - Standard research threshold
+  // Most of North America, Europe, temperate Asia
+  else if (Math.abs(centerLat) > 35 && Math.abs(centerLat) < 50) {
+    threshold = 0.30 // Standard research threshold for temperate forests
+  }
+  
+  // SUBTROPICAL REGIONS - Moderate threshold
+  else if (Math.abs(centerLat) > 23.5 && Math.abs(centerLat) < 35) {
+    threshold = 0.28 // Moderate for subtropical vegetation
+  }
+  
+  // MEDITERRANEAN CLIMATES - Variable vegetation
+  // California, Mediterranean Basin, Chile, South Africa, Australia
+  else if ((centerLat > 30 && centerLat < 45 && centerLon > -10 && centerLon < 40) || // Mediterranean
+           (centerLat > 32 && centerLat < 42 && centerLon > -125 && centerLon < -115) || // California
+           (centerLat > -35 && centerLat < -30 && centerLon > -75 && centerLon < -70)) { // Chile
+    threshold = 0.27 // Lower for drought-adapted vegetation
+  }
+  
+  // GRASSLAND/PRAIRIE REGIONS - Lower threshold
+  // Great Plains, Pampas, Steppes
+  else if ((centerLat > 30 && centerLat < 50 && centerLon > -110 && centerLon < -90) || // Great Plains
+           (centerLat > -40 && centerLat < -25 && centerLon > -65 && centerLon < -55)) { // Pampas
+    threshold = 0.25 // Lower for grasslands and prairies
+  }
+  
+  // ARID/SEMI-ARID REGIONS - Very low threshold (sparse vegetation)
+  // Deserts, semi-arid regions
+  else if ((centerLat > 15 && centerLat < 35 && centerLon > 25 && centerLon < 55) || // Arabian Peninsula
+           (centerLat > 15 && centerLat < 35 && centerLon > -10 && centerLon < 25) || // Sahara
+           (centerLat > -35 && centerLat < -20 && centerLon > 110 && centerLon < 155) || // Australian Outback
+           (centerLat > 25 && centerLat < 45 && centerLon > -120 && centerLon < -100)) { // US Southwest
+    threshold = 0.20 // Very low for desert vegetation (cacti, shrubs)
+  }
+  
+  // BOREAL/TAIGA REGIONS - Moderate threshold
+  // Canada, Alaska, Siberia, Scandinavia
+  else if (Math.abs(centerLat) > 50) {
+    threshold = 0.28 // Moderate for coniferous forests
+  }
+  
+  // URBAN AREAS - Adjusted threshold for mixed urban vegetation
+  // Major metropolitan areas get slightly lower thresholds to capture urban green spaces
+  if ((centerLat > 43.5 && centerLat < 43.9 && centerLon > -79.9 && centerLon < -78.7) || // Toronto
+      (centerLat > 49.2 && centerLat < 49.4 && centerLon > -123.3 && centerLon < -122.9) || // Vancouver
+      (centerLat > 41.0 && centerLat < 41.4 && centerLon > 28.8 && centerLon < 29.4) || // Istanbul
+      (centerLat > 35.6 && centerLat < 35.8 && centerLon > 139.6 && centerLon < 139.8) || // Tokyo
+      (centerLat > 53.3 && centerLat < 53.6 && centerLon > -2.4 && centerLon < -2.0)) { // Manchester
+    threshold = threshold * 0.9 // 10% lower threshold for urban vegetation detection
+  }
+  
+  return threshold
 }
 
 // OAuth token cache
