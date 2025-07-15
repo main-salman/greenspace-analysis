@@ -535,11 +535,6 @@ async function callSentinelAPI(cellBounds, year) {
       evalscript: `
         // Multi-index vegetation analysis (research-based)
         function evaluatePixel(sample) {
-          // Check for valid data using dataMask
-          if (sample.dataMask === 0) {
-            return [0, 0, 0]; // No data available
-          }
-          
           let red = sample.B04;   // Red
           let green = sample.B03; // Green  
           let blue = sample.B02;  // Blue
@@ -568,7 +563,7 @@ async function callSentinelAPI(cellBounds, year) {
         
         function setup() {
           return {
-            input: ["B02", "B03", "B04", "B05", "B08", "dataMask"], // Blue, Green, Red, RedEdge, NIR, dataMask
+            input: ["B02", "B03", "B04", "B05", "B08"], // Blue, Green, Red, RedEdge, NIR
             output: { bands: 3, sampleType: "FLOAT32" }
           };
         }
