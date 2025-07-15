@@ -57,6 +57,10 @@ const GreenpaceMap = ({ analysisData, city }) => {
         // Use real grid data if available, otherwise generate mock data
         if (analysisData.gridData && analysisData.gridData.length > 0) {
           console.log('Using real grid data:', analysisData.gridData.length, 'cells')
+          
+          // DEBUG: Log sample of grid data
+          console.log('Sample grid cells:', analysisData.gridData.slice(0, 3))
+          
           const cells = analysisData.gridData.map(cell => ({
             bounds: [
               [cell.bounds[1], cell.bounds[0]], // [south, west]
@@ -68,6 +72,12 @@ const GreenpaceMap = ({ analysisData, city }) => {
             ndvi: cell.ndvi.toFixed(3),
             vegetationPercentage: cell.vegetationPercentage.toFixed(1)
           }))
+          
+          // DEBUG: Log vegetation percentages
+          const vegPercentages = cells.map(c => parseFloat(c.vegetationPercentage))
+          console.log('Vegetation percentages range:', Math.min(...vegPercentages), 'to', Math.max(...vegPercentages))
+          console.log('Cells with >0.1% vegetation:', vegPercentages.filter(v => v > 0.1).length)
+          
           setGreenspaceCells(cells)
         } else {
           // Fallback to mock data if no grid data available
@@ -164,8 +174,8 @@ const GreenpaceMap = ({ analysisData, city }) => {
             const intensity = cell.intensity || 0
             const vegetationPercentage = parseFloat(cell.vegetationPercentage) || 0
             
-            // Show cells with any vegetation (even minimal)
-            if (vegetationPercentage > 0.5) {
+            // Show cells with any vegetation (lowered threshold to show more coverage)
+            if (vegetationPercentage > 0.1) {
               return (
                 <Rectangle
                   key={index}
