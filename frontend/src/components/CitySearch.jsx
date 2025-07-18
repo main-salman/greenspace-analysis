@@ -9,8 +9,8 @@ const CitySearch = ({ onCitySelect }) => {
   const [cities, setCities] = useState([])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [yearRange, setYearRange] = useState({
-    startYear: new Date().getFullYear() - 15,
-    endYear: new Date().getFullYear()
+    startYear: 2020,
+    endYear: 2021
   })
 
   useEffect(() => {

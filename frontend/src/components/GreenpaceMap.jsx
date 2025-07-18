@@ -35,7 +35,7 @@ const GreenpaceMap = ({ analysisData, city }) => {
       const { latitude, longitude } = analysisData.cityInfo
       
       // Create bounds around the city center
-      const buffer = 0.05 // degrees
+      const buffer = 0.1 // Increased buffer for better visibility
       const bounds = [
         longitude - buffer, // west
         latitude - buffer,  // south
@@ -49,49 +49,48 @@ const GreenpaceMap = ({ analysisData, city }) => {
         setCityBounds(analysisData.cityInfo.boundaries)
       }
 
-      try {
-        // DEBUG: Log what we received
-        console.log('FRONTEND DEBUG: analysisData.gridData:', analysisData.gridData)
-        console.log('FRONTEND DEBUG: gridData length:', analysisData.gridData?.length)
+      // COMPLETE REBUILD: Simple and direct grid cell processing
+      if (analysisData.gridData && analysisData.gridData.length > 0) {
+        console.log('🔥 REBUILDING MAP: Processing', analysisData.gridData.length, 'grid cells')
         
-        // Use only real satellite data - no synthetic fallbacks
-        if (analysisData.gridData && analysisData.gridData.length > 0) {
-          console.log('Using real SENTINEL-2 satellite data:', analysisData.gridData.length, 'cells')
+        // Process ALL grid cells with simplified logic
+        const processedCells = analysisData.gridData.map((cell, index) => {
+          // Backend sends: [west, south, east, north]
+          const [west, south, east, north] = cell.bounds
+          const vegPercentage = parseFloat(cell.vegetationPercentage) || 0
           
-          // DEBUG: Log sample of grid data
-          console.log('Sample grid cells:', analysisData.gridData.slice(0, 3))
+          // DEBUG: Log every cell to see coordinate distribution
+          if (index < 10 || index % 20 === 0) {
+            console.log(`Cell ${index}: [${west.toFixed(4)}, ${south.toFixed(4)}, ${east.toFixed(4)}, ${north.toFixed(4)}] = ${vegPercentage.toFixed(1)}%`)
+          }
           
-          const cells = analysisData.gridData.map(cell => ({
-            bounds: [
-              [cell.bounds[1], cell.bounds[0]], // [south, west]
-              [cell.bounds[1], cell.bounds[2]], // [south, east]  
-              [cell.bounds[3], cell.bounds[2]], // [north, east]
-              [cell.bounds[3], cell.bounds[0]]  // [north, west]
-            ],
-            intensity: cell.vegetationPercentage / 100,
-            ndvi: cell.ndvi.toFixed(3),
-            vegetationPercentage: cell.vegetationPercentage.toFixed(1)
-          }))
+          // Create Leaflet rectangle bounds - SIMPLIFIED
+          const rectangleBounds = [
+            [south, west], // Southwest corner
+            [north, east]  // Northeast corner
+          ]
           
-          // DEBUG: Log vegetation percentages
-          const vegPercentages = cells.map(c => parseFloat(c.vegetationPercentage))
-          console.log('Vegetation percentages range:', Math.min(...vegPercentages), 'to', Math.max(...vegPercentages))
-          console.log('Cells with >0.1% vegetation:', vegPercentages.filter(v => v > 0.1).length)
-          
-          setGreenspaceCells(cells)
-        } else {
-          // No real satellite data available - show error instead of synthetic data
-          console.error('No real satellite data available for visualization')
-          setGreenspaceCells([])
-        }
-      } catch (error) {
-        console.error('Error generating greenspace cells:', error)
+          return {
+            id: index,
+            bounds: rectangleBounds,
+            vegetationPercentage: vegPercentage,
+            ndvi: cell.ndvi,
+            originalBounds: cell.bounds
+          }
+        })
+        
+        // Show cells with any meaningful vegetation (lowered threshold for better coverage)
+        const cellsToRender = processedCells.filter(cell => cell.vegetationPercentage >= 0.5)
+        
+        console.log(`🎯 RENDER DECISION: ${cellsToRender.length} of ${processedCells.length} cells will be rendered`)
+        
+        setGreenspaceCells(cellsToRender)
+      } else {
+        console.log('❌ No grid data available for map visualization')
         setGreenspaceCells([])
       }
     }
   }, [analysisData])
-
-  // Mock data generation function removed - Real satellite data only
 
   if (!mapBounds || !analysisData?.cityInfo?.latitude || !analysisData?.cityInfo?.longitude) {
     return (
@@ -101,47 +100,19 @@ const GreenpaceMap = ({ analysisData, city }) => {
     )
   }
 
-  // Show error message if no real satellite data is available
-  if (greenspaceCells.length === 0 && analysisData?.gridData !== undefined) {
-    return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-4 bg-gradient-to-r from-red-50 to-orange-50 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Map Visualization Unavailable</h3>
-          <div className="text-sm text-gray-600 space-y-2">
-            <p>No real SENTINEL-2 satellite data available for this location and time period.</p>
-            <p className="text-xs">This application only uses authentic satellite imagery. Please try:</p>
-            <ul className="text-xs list-disc list-inside ml-4 space-y-1">
-              <li>A different city or location</li>
-              <li>Checking back later for updated satellite data</li>
-              <li>Ensuring the location has recent satellite coverage</li>
-            </ul>
-          </div>
-        </div>
-        <div className="h-64 bg-gray-50 flex items-center justify-center">
-          <div className="text-center text-gray-500">
-            <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.137 0-4.146-.832-5.657-2.343" />
-            </svg>
-            <p className="text-sm">Real satellite data required for analysis</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="p-4 bg-gradient-to-r from-green-50 to-yellow-50 border-b border-gray-200">
         <h3 className="text-lg font-semibold text-gray-900 mb-2">Greenspace Map Visualization</h3>
         <p className="text-sm text-gray-600">
-          Green areas indicate detected vegetation. Darker shades represent higher vegetation density (NDVI values).
+          Green areas indicate detected vegetation. All {greenspaceCells.length} analyzed grid cells are displayed.
         </p>
       </div>
       
       <div className="h-[48rem] relative">
         <MapContainer
           style={{ height: '100%', width: '100%' }}
-          zoom={13}
+          zoom={11}
           center={[analysisData.cityInfo.latitude, analysisData.cityInfo.longitude]}
         >
           <TileLayer
@@ -151,37 +122,41 @@ const GreenpaceMap = ({ analysisData, city }) => {
           
           <FitBounds bounds={mapBounds} />
           
-          {/* Render greenspace cells */}
-          {greenspaceCells.map((cell, index) => {
-            const intensity = cell.intensity || 0
-            const vegetationPercentage = parseFloat(cell.vegetationPercentage) || 0
+          {/* REBUILT: Render ALL grid cells with vegetation */}
+          {greenspaceCells.map((cell) => {
+            const vegPercentage = cell.vegetationPercentage
+            const hasVegetation = vegPercentage > 0.5 // Show cells with any detectable vegetation
             
-            // Show cells with any vegetation (lowered threshold to show more coverage)
-            if (vegetationPercentage > 0.1) {
-              return (
-                <Rectangle
-                  key={index}
-                  bounds={cell.bounds}
-                  pathOptions={{
-                    fillColor: '#10b981', // Green for greenspace
-                    fillOpacity: Math.max(0.2, intensity * 0.8), // Minimum opacity for visibility
-                    color: '#059669',
-                    weight: 0.5,
-                    opacity: 0.9
-                  }}
-                >
-                  <Popup>
-                    <div className="text-sm">
-                      <strong>Vegetation Detected</strong><br />
-                      NDVI: {cell.ndvi}<br />
-                      Vegetation: {vegetationPercentage.toFixed(1)}%<br />
-                      Grid Cell: {index + 1}
-                    </div>
-                  </Popup>
-                </Rectangle>
-              )
-            }
-            return null
+            if (!hasVegetation) return null
+            
+            // Color intensity based on vegetation percentage
+            const intensity = Math.min(1, vegPercentage / 100)
+            const opacity = Math.max(0.3, intensity * 0.8)
+            
+            return (
+              <Rectangle
+                key={cell.id}
+                bounds={cell.bounds}
+                pathOptions={{
+                  fillColor: '#10b981', // Consistent green color
+                  fillOpacity: opacity,
+                  color: '#059669',
+                  weight: 1,
+                  opacity: 0.8
+                }}
+              >
+                <Popup>
+                  <div className="text-sm">
+                    <strong>Vegetation Cell #{cell.id + 1}</strong><br />
+                    <strong>Coverage:</strong> {vegPercentage.toFixed(1)}%<br />
+                    <strong>NDVI:</strong> {parseFloat(cell.ndvi).toFixed(3)}<br />
+                    <strong>Coordinates:</strong><br />
+                    SW: [{cell.originalBounds[1].toFixed(4)}, {cell.originalBounds[0].toFixed(4)}]<br />
+                    NE: [{cell.originalBounds[3].toFixed(4)}, {cell.originalBounds[2].toFixed(4)}]
+                  </div>
+                </Popup>
+              </Rectangle>
+            )
           })}
           
           {/* Render city boundaries */}
@@ -220,7 +195,7 @@ const GreenpaceMap = ({ analysisData, city }) => {
             </div>
           </div>
           <span className="text-gray-500">
-            {greenspaceCells.length} vegetation cells detected
+            {greenspaceCells.length} vegetation cells displayed
           </span>
         </div>
       </div>
