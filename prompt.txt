@@ -62,3 +62,161 @@ Before I start building, I'd like to ask you 10 questions to ensure I create exa
 1. web app 3. simple search where use inputs city name 3. openstreetmap boundaries 4. any option that can be used worldwide - Google sounds good 5. grid base 6. no, treat all greenspace as one category 7. total percentage of greenspace only 8. trend analysis 9. pre-computed list of cities defined in @cities.json 10. personal/research for now.
 
 Let me know if you need Google Places API key, then I will place it in .env file
+
+
+redeploy the app based on these notes from my very smart friend. Ask me 10 questions before proceeding:
+Green Space - Data Pipeline
+1. Data Preprocessing
+    •    Input:
+    •    Sentinel-2 imagery (.TIF): Multispectral optical data (10–60 m resolution, L2A bottom-of-atmosphere reflectance)
+    •    Sentinel-1 imagery (.TIF): Synthetic Aperture Radar (SAR), VV and VH polarizations (GRD product)
+    •    SRTM DEM (.TIF): 30-m elevation data used to calculate terrain slope
+    •    Processing:
+    •    Cloud masking on Sentinel-2 using:
+    •    QA60 band
+    •    s2cloudless cloud probability mask
+    •    Multi-temporal cloud shadow detection
+    •    Geometric & radiometric corrections to align imagery
+    •    Super-resolution of Sentinel-2 bands (e.g., 20 m → 10 m) using CNN or bicubic interpolation
+    •    Generation of monthly mosaics:
+    •    Median compositing of cloud-free pixels within each 6×6 km tile per month
+    •    Band-wise normalization based on mean and standard deviation
+    •    Derived layers:
+    •    Vegetation indices (EVI, GNDVI, BSI, MSAVI2)
+    •    Terrain slope from SRTM (using gradient operators)
+    •    Output:
+    •    Monthly cloud-free composites (.TIF): 10-m resolution, per-band Sentinel-1 and -2 mosaics
+    •    Monthly median composite (.TIF): Per-band median of optical + indices over the full year
+    •    Terrain slope (.TIF): 10-m slope raster
+
+2. Training Data Creation
+    •    Input:
+    •    WorldView imagery (.TIF): ≤1 m resolution, used for tree labeling
+    •    PlanetScope imagery (.TIF): 3–5 m resolution, used for time matching and QA
+    •    Monthly cloud-free composites (.TIF): 10-m resolution, per-band Sentinel-1 and -2 mosaics
+    •    Processing:
+    •    Photo-interpretation of WorldView imagery using Collect Earth Online
+    •    Label training plots (140 × 140 m each) at 10-m intervals (10 x 10 m pixels per plot) - plots from monthly cloud-free composites
+    •    Labels assigned as positive if tree canopy intersects the pixel centroid
+    •    QA steps:
+    •    Cross-validation with PlanetScope imagery for year consistency
+    •    Discard mismatches or cloud-obscured samples
+    •    Output:
+    •    Training dataset (.CSV, .GEOJSON): Labeled binary data for pixels in 140 x 140 m plots
+    •    Validation dataset (.CSV, .GEOJSON): separate 140 × 140 m plots
+
+3. Model Training & Calibration
+    •    Input:
+    •    Monthly cloud-free composites (.TIF): 10-m resolution, per-band Sentinel-1 and -2 mosaics
+    •    Monthly median composite (.TIF): Per-band median of optical + indices over the full year
+    •    SRTM DEM (.TIF): 30-m elevation data used to calculate terrain slope
+    •    Training dataset (.CSV, .GEOJSON): Labeled binary data for ~3.5 million pixels
+    •    Processing:
+    •    Input features stacked: monthly time series + annual summary + slope
+    •    Architecture: Modified U-Net with temporal GRU encoder (329,929 parameters)
+    •    Loss: Combined binary cross-entropy, label smoothing, boundary loss
+    •    Optimizer: AdaBound
+    •    Regularization:
+    •    DropBlock (p=0.15), Zoneout (p=0.9)
+    •    CutMix for synthetic samples
+    •    Partial convolutions & resize convolutions to reduce edge artifacts
+    •    GroupNorm + Swish activation to improve sharpness
+    •    Attention blocks: Channel squeeze + spatial excitation
+    •    Sharpness-Aware Minimization (SAM) + Stochastic Weight Averaging (SWA) for stability
+    •    Output:
+    •    Trained tree extent model (.H5, TensorFlow SavedModel format)
+
+4. Inference (Tree Extent Prediction)
+    •    Input:
+    •    Trained tree extent model (.H5, TensorFlow SavedModel format)
+    •    Monthly cloud-free composites (.TIF): 10-m resolution, per-band Sentinel-1 and -2 mosaics
+    •    SRTM DEM (.TIF): 30-m elevation data used to calculate terrain slope
+    •    Processing:
+    •    Apply model tile-by-tile across 1.2 million 6 × 6 km tiles (~4.35 billion ha)
+    •    Output per-pixel tree extent probability [0–1]
+    •    Postprocessing:
+    •    Tile overlap blending with Gaussian filters
+    •    Final mosaicking using resegmentation and majority vote
+    •    Areas with <2 cloud-free images: attempted backfill with historical Sentinel data
+    •    Output:
+    •    Tree extent probability map (.TIF): 10-m resolution, float32 [0–1]
+    •    Binary tree extent map (.TIF): 10-m resolution, thresholded at 0.35
+
+5. Tree Cover Calculation
+    •    Input:
+    •    Tree extent probability map (.TIF): 10-m resolution, float32 [0–1]
+    •    Binary tree extent map (.TIF): 10-m resolution, thresholded at 0.35
+    •    Processing:
+    •    Convert 10-m pixel probabilities to tree cover %:
+    •    Use 70 × 70 m (0.49 ha) blocks
+    •    Compute average tree extent probability within block
+    •    Classify into tree cover bins (e.g., ≥10%, ≥40%)
+    •    Alternative:
+    •    Use proportion of binary positives in 70 × 70 m area
+    •    Used to reduce misalignment noise and match field sampling scale
+    •    Output:
+    •    Tree cover map (.TIF): 70 × 70 m resolution, float32 [0–100%]
+    •    Binary tree cover masks (.TIF): Thresholded at 10%, 40% etc.
+
+6. Validation & Accuracy Assessment
+    •    Input:
+    •    Validation dataset (.CSV/.GEOJSON)
+    •    Tree extent probability map (.TIF): 10-m resolution, float32 [0–1]
+    •    Tree cover map (.TIF): 70 × 70 m resolution, float32 [0–100%]
+    •    ESA CCI land cover (.TIF), Sorensen aridity zones (.TIF)
+    •    Processing:
+    •    Stratified bootstrap sampling (10,000 iterations)
+    •    Accuracy metrics:
+    •    User’s Accuracy (UA) and Producer’s Accuracy (PA)
+    •    RMSE, R² between predicted vs labeled cover
+    •    Patch-level analysis: Precision by connected component size
+    •    Bias assessment by woody vegetation type (e.g., forest, shrubland) using Africover, Potapov et al. canopy height, and Verhegghen et al.
+    •    Output:
+    •    Validation report (.CSV, .PDF): Accuracy by land cover, region, aridity
+    •    Comparison tables (.XLSX, .CSV): Area by cover class vs prior datasets
+    •    Visual assessment plots (.PNG, .SVG)
+
+    Looking at these comprehensive notes for a sophisticated Green Space Data Pipeline, I need to understand your specific requirements and constraints before redeploying the app. This is a very complex system involving satellite imagery processing, machine learning models, and large-scale geospatial analysis.
+
+Here are my 10 questions:
+
+## Technical Scope & Implementation
+
+1. **Pipeline Scope**: Do you want to implement the complete 6-step pipeline (preprocessing → validation), or are you looking to focus on specific components? Which steps are highest priority?
+
+2. **Data Access**: What satellite data sources do you currently have access to? Do you have API keys/subscriptions for Sentinel-2, Sentinel-1, SRTM, WorldView, and PlanetScope imagery?
+
+3. **ML Infrastructure**: Do you have access to GPU resources for model training and inference? Are you planning to use cloud services (AWS, GCP, Azure) or local infrastructure?
+
+## Architecture & Deployment
+
+4. **Deployment Target**: Where do you want to deploy this? (Local development, cloud platforms, edge computing, etc.) What's your preferred hosting solution?
+
+5. **Data Scale**: What geographic area/scale are you targeting initially? (City-level, country-level, global?) This affects storage and processing requirements.
+
+6. **Existing Functionality**: Looking at your current app, what parts should be preserved? Should the new pipeline integrate with the existing UI components?
+
+## Resources & Timeline
+
+7. **Budget/Resources**: What's your budget for cloud computing, data storage, and API access? This pipeline could be very resource-intensive.
+
+8. **Pre-trained Models**: Do you have access to the trained U-Net model mentioned, or do we need to implement training from scratch?
+
+## User Experience & Features
+
+9. **Primary Use Case**: Who will be using this system? Researchers, city planners, general public? What's the main user journey you envision?
+
+10. **Real-time vs Batch**: Do you need real-time analysis capabilities, or is batch processing of historical data sufficient for your use case?
+
+These answers will help me determine whether to build a full enterprise-grade pipeline, a simplified proof-of-concept, or something in between that matches your actual needs and resources.
+
+1. let's focus on step 1 and step 6 - we don't necessarily need all the steps - whatever is simpler and easier to implement to start would be best. 2. @.env has API keys for sentinel and Google Earth Engine 3. no 4. local now 5. city level 6. let's keep the UI, everything else can be discarded if needed 7. very low budget 8. no access to pre-trained models. I want simplest implementation possible. I want the app to look at the map and see where the vegetation is and then show that on the map and also show the percentage of green vegetation on the map as well visually in the purple colour with darker purple for more vegetation and translucent purple for less vegetation. 9. city planners 10. Let's do real time to start one city at a time during the testing phase.
+
+
+Calculate other vegetation index when calculating green space. 
+	⁃	EVI = 2.5 (B8 - B4) / (B5 + 6 B4 - 7.5 B2 + 1)
+	⁃	GNDVI = (B8 - B3 + B4) / (B8 + B3 + B4)
+	⁃	BSI = (B2 + B4 - B3) / (B2 + B4 + B3)
+	⁃	MSAVI2 = (2 B8 + 1 - sqrt((2 B8 + 1)^2 - 8(B8 - B4)^2)) / 2
+
+   
